@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Relighting Method Showcase</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <canvas id="mainCanvas"></canvas>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+    import GUI from 'https://cdn.jsdelivr.net/npm/lil-gui@0.18/+esm';
+
+    const canvas = document.getElementById('mainCanvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 2, 8);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.target.set(0, 1.5, 0);
+    controls.update();
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+
+    const ssaoPass = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
+    ssaoPass.kernelRadius = 16;
+    composer.addPass(ssaoPass);
+
+    // Lights
+    const dirLight = new THREE.DirectionalLight(0xffffff, 3);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const dirTarget = new THREE.Object3D();
+    dirTarget.position.set(0, 1.5, 0);
+    scene.add(dirTarget);
+    dirLight.target = dirTarget;
+
+    const lightHelper = new THREE.DirectionalLightHelper(dirLight, 1);
+    //scene.add(lightHelper);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2);
+    scene.add(ambientLight);
+
+    // GUI
+    const gui = new GUI();
+
+    // Directional Light Controls
+    const dirLightSettings = {
+      color: '#ffffff',
+      enabled: true
+    };
+    const dirLightFolder = gui.addFolder('Directional Light');
+    dirLightFolder.addColor(dirLightSettings, 'color').onChange(val => dirLight.color.set(val));
+    dirLightFolder.add(dirLight, 'intensity', 0, 10, 0.1);
+    dirLightFolder.add(dirLightSettings, 'enabled').name('Enable Light').onChange(val => {
+      dirLight.visible = val;
+      lightHelper.visible = val;
+    });
+    dirLightFolder.open();
+
+    // Ambient Light Controls
+    const ambientSettings = {
+      color: '#ffffff',
+      enabled: true
+    };
+    const ambientFolder = gui.addFolder('Ambient Light');
+    ambientFolder.addColor(ambientSettings, 'color').onChange(val => ambientLight.color.set(val));
+    ambientFolder.add(ambientLight, 'intensity', 0, 10, 0.1);
+    ambientFolder.add(ambientSettings, 'enabled').name('Enable Light').onChange(val => {
+      ambientLight.visible = val;
+    });
+    ambientFolder.open();
+
+    // Light Animation
+    const lightAnimSettings = {
+      enableAnimation: true,
+      speed: 0.01
+    };
+    const lightAnimFolder = gui.addFolder('Light Animation');
+    lightAnimFolder.add(lightAnimSettings, 'enableAnimation').name('Enable Movement');
+    lightAnimFolder.add(lightAnimSettings, 'speed', 0.001, 0.1, 0.001).name('Speed');
+    lightAnimFolder.open();
+
+    // Lighting Presets
+    const presets = { theme: 'Daylight' };
+    const lightingPresets = {
+      Daylight: () => {
+        scene.background = new THREE.Color(0xbbbbbb);
+        ambientLight.color.set('#ffffff');
+        ambientLight.intensity = 1.5;
+        ambientLight.visible = true;
+        dirLight.color.set('#ffffff');
+        dirLight.intensity = 3;
+        dirLight.position.set(5, 10, 7.5);
+        dirLight.visible = true;
+        lightHelper.visible = true;
+      },
+      Night: () => {
+        scene.background = new THREE.Color(0x111122);
+        ambientLight.color.set('#222244');
+        ambientLight.intensity = 0.4;
+        ambientLight.visible = true;
+        dirLight.color.set('#8888ff');
+        dirLight.intensity = 0.6;
+        dirLight.position.set(2, 4, 1);
+        dirLight.visible = true;
+        lightHelper.visible = true;
+      },
+      Studio: () => {
+        scene.background = new THREE.Color(0x202020);
+        ambientLight.color.set('#ffffff');
+        ambientLight.intensity = 1.2;
+        ambientLight.visible = true;
+        dirLight.color.set('#ffffff');
+        dirLight.intensity = 2.5;
+        dirLight.position.set(0, 5, 3);
+        dirLight.visible = true;
+        lightHelper.visible = true;
+      }
+    };
+
+    const presetFolder = gui.addFolder('Lighting Presets');
+    presetFolder.add(presets, 'theme', Object.keys(lightingPresets)).name('Theme').onChange(theme => {
+      lightingPresets[theme]();
+    });
+    presetFolder.open();
+
+    lightingPresets[presets.theme](); // Apply default
+
+    // Ground
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(2.5, 64),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x888888,
+        roughness: 0.3,
+        metalness: 0.0,
+        reflectivity: 0.5,
+        clearcoat: 0.1
+      })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Load Model
+    let currentModel = null;
+    const modelFiles = {
+      'Model 1': 'svo2.obj',
+      'Model 2': 'svo3.obj',
+      'Model 3': 'svo4.obj',
+      'Model 4': 'svo5.obj',
+      'Model 5': 'svo6.obj',
+      'Model 6': 'svo7.obj',
+      'Model 7': 'svo8.obj',
+      'Model 8': 'svo9.obj',
+      'Model 9': 'svo10.obj',
+      'Model 10': 'svo11.obj',
+      'Model 11': 'svo12.obj',
+      'Model 12': 'svo13.obj'
+    };
+    const modelSettings = {
+      selectedModel: 'Model 1'
+    };
+
+    function loadModel(filePath) {
+      const loader = new OBJLoader();
+      loader.load(filePath, obj => {
+        if (currentModel) {
+          scene.remove(currentModel);
+          currentModel.traverse(child => {
+            if (child.isMesh) {
+              child.geometry.dispose();
+              if (child.material) child.material.dispose();
+            }
+          });
+        }
+
+        obj.position.set(0, 1.85, 0);
+        obj.scale.x *= -1;
+
+        obj.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            child.material = new THREE.MeshPhysicalMaterial({
+              vertexColors: !!child.geometry.attributes.color,
+              roughness: 0.8,
+              metalness: 0.0,
+              envMapIntensity: 1.0,
+              clearcoat: 0.05,
+              clearcoatRoughness: 0.05,
+              transmission: 0.05
+            });
+          }
+        });
+
+        currentModel = obj;
+        scene.add(currentModel);
+      });
+    }
+
+    const modelFolder = gui.addFolder('Model Selection');
+    modelFolder.add(modelSettings, 'selectedModel', Object.keys(modelFiles)).onChange(modelName => {
+      loadModel(modelFiles[modelName]);
+    });
+    modelFolder.open();
+
+    loadModel(modelFiles[modelSettings.selectedModel]); // Initial model
+
+    // Animation loop
+    let angle = 0;
+    function render() {
+      if (lightAnimSettings.enableAnimation) {
+        angle += lightAnimSettings.speed;
+        const radius = 10;
+        dirLight.position.set(
+          radius * Math.cos(angle),
+          10,
+          radius * Math.sin(angle)
+        );
+        dirLight.target.position.set(0, 1.5, 0);
+        dirLight.target.updateMatrixWorld();
+        lightHelper.update();
+      }
+
+      composer.render();
+    }
+
+    renderer.setAnimationLoop(render);
+  </script>
+</body>
+</html>
