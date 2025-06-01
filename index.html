@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Relighting Method Showcase</title>
   <style>
     body { margin: 0; overflow: hidden; }
@@ -15,13 +15,16 @@
     {
       "imports": {
         "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/"
       }
     }
   </script>
 
   <script type="module">
     import * as THREE from 'three';
+    import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+
+
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
     import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -35,9 +38,9 @@
     renderer.shadowMap.enabled = true;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    const exrLoader = new EXRLoader();
 
     const scene = new THREE.Scene();
-
     const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(0, 2, 8);
 
@@ -47,114 +50,147 @@
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-
     const ssaoPass = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
     ssaoPass.kernelRadius = 16;
     composer.addPass(ssaoPass);
 
     // Lights
     const dirLight = new THREE.DirectionalLight(0xffffff, 3);
+    dirLight.position.set(5, 10, 7.5);
     dirLight.castShadow = true;
-    scene.add(dirLight);
-
     const dirTarget = new THREE.Object3D();
     dirTarget.position.set(0, 1.5, 0);
-    scene.add(dirTarget);
+    scene.add(dirLight, dirTarget);
     dirLight.target = dirTarget;
-
-    const lightHelper = new THREE.DirectionalLightHelper(dirLight, 1);
-    //scene.add(lightHelper);
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 2);
     scene.add(ambientLight);
 
-    // GUI
+    const pointLight = new THREE.PointLight(0xffffff, 10, 20, 2);
+    pointLight.position.set(0, 3, 5);
+    pointLight.castShadow = true;
+    scene.add(pointLight);
+
+    const spotLight = new THREE.SpotLight(0xffffff, 10, 20, Math.PI / 6, 0.3, 2);
+    spotLight.position.set(0, 5, 5);
+    spotLight.castShadow = true;
+    spotLight.target.position.set(0, 1.5, 0);
+    scene.add(spotLight, spotLight.target);
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+    hemiLight.position.set(0, 4, 0);
+    scene.add(hemiLight);
+
+    function disableAllLights() {
+      dirLight.visible = false;
+      ambientLight.visible = false;
+      pointLight.visible = false;
+      spotLight.visible = false;
+      hemiLight.visible = false;
+    }
+
+    function kelvinToColor(tempK) {
+      const t = tempK / 100;
+      let r, g, b;
+
+      r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
+      g = t <= 66 ? 99.4708025861 * Math.log(t) - 161.1195681661 : 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+      b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+
+      return new THREE.Color(
+        Math.min(Math.max(r, 0), 255) / 255,
+        Math.min(Math.max(g, 0), 255) / 255,
+        Math.min(Math.max(b, 0), 255) / 255
+      );
+    }
+
     const gui = new GUI();
 
-    // Directional Light Controls
-    const dirLightSettings = {
-      color: '#ffffff',
-      enabled: true
+    const lightControls = {
+      temperature: 6500,
+      useLocalLights: true,
+      useEnvMap: true,
+      environment: '1.exr'
     };
-    const dirLightFolder = gui.addFolder('Directional Light');
-    dirLightFolder.addColor(dirLightSettings, 'color').onChange(val => dirLight.color.set(val));
-    dirLightFolder.add(dirLight, 'intensity', 0, 10, 0.1);
-    dirLightFolder.add(dirLightSettings, 'enabled').name('Enable Light').onChange(val => {
-      dirLight.visible = val;
-      lightHelper.visible = val;
-    });
-    dirLightFolder.open();
 
-    // Ambient Light Controls
-    const ambientSettings = {
-      color: '#ffffff',
-      enabled: true
-    };
-    const ambientFolder = gui.addFolder('Ambient Light');
-    ambientFolder.addColor(ambientSettings, 'color').onChange(val => ambientLight.color.set(val));
-    ambientFolder.add(ambientLight, 'intensity', 0, 10, 0.1);
-    ambientFolder.add(ambientSettings, 'enabled').name('Enable Light').onChange(val => {
-      ambientLight.visible = val;
-    });
-    ambientFolder.open();
+    const envMaps = ['1.exr', '2.exr', '3.exr', '4.exr', '5.exr', '6.exr', '7.exr', '8.exr', '9.exr', '10.exr'];
+  
 
-    // Light Animation
-    const lightAnimSettings = {
-      enableAnimation: true,
-      speed: 0.01
-    };
-    const lightAnimFolder = gui.addFolder('Light Animation');
-    lightAnimFolder.add(lightAnimSettings, 'enableAnimation').name('Enable Movement');
-    lightAnimFolder.add(lightAnimSettings, 'speed', 0.001, 0.1, 0.001).name('Speed');
-    lightAnimFolder.open();
+    function updateEnvMap(path) {
+  exrLoader.load(path, texture => {
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = lightControls.useEnvMap ? texture : null;
+    scene.background = texture;
+  });
+}
 
-    // Lighting Presets
-    const presets = { theme: 'Daylight' };
+
     const lightingPresets = {
       Daylight: () => {
-        scene.background = new THREE.Color(0xbbbbbb);
-        ambientLight.color.set('#ffffff');
-        ambientLight.intensity = 1.5;
-        ambientLight.visible = true;
-        dirLight.color.set('#ffffff');
-        dirLight.intensity = 3;
-        dirLight.position.set(5, 10, 7.5);
-        dirLight.visible = true;
-        lightHelper.visible = true;
+        disableAllLights();
+        if (lightControls.useLocalLights) {
+          dirLight.visible = true;
+          dirLight.intensity = 3;
+          dirLight.color = kelvinToColor(lightControls.temperature);
+        }
       },
-      Night: () => {
-        scene.background = new THREE.Color(0x111122);
-        ambientLight.color.set('#222244');
-        ambientLight.intensity = 0.4;
-        ambientLight.visible = true;
-        dirLight.color.set('#8888ff');
-        dirLight.intensity = 0.6;
-        dirLight.position.set(2, 4, 1);
-        dirLight.visible = true;
-        lightHelper.visible = true;
+      PointLight: () => {
+        disableAllLights();
+        if (lightControls.useLocalLights) {
+          pointLight.visible = true;
+          pointLight.intensity = 50;
+          pointLight.color = kelvinToColor(lightControls.temperature);
+        }
       },
-      Studio: () => {
-        scene.background = new THREE.Color(0x202020);
-        ambientLight.color.set('#ffffff');
-        ambientLight.intensity = 1.2;
-        ambientLight.visible = true;
-        dirLight.color.set('#ffffff');
-        dirLight.intensity = 2.5;
-        dirLight.position.set(0, 5, 3);
-        dirLight.visible = true;
-        lightHelper.visible = true;
+      SpotLight: () => {
+        disableAllLights();
+        if (lightControls.useLocalLights) {
+          spotLight.visible = true;
+          spotLight.intensity = 50;
+          spotLight.color = kelvinToColor(lightControls.temperature);
+        }
+      },
+      Ambient: () => {
+        disableAllLights();
+        if (lightControls.useLocalLights) {
+          ambientLight.visible = true;
+          ambientLight.intensity = 3;
+          ambientLight.color = kelvinToColor(lightControls.temperature);
+        }
+      },
+      Fluorescent: () => {
+        disableAllLights();
+        if (lightControls.useLocalLights) {
+          hemiLight.visible = true;
+          hemiLight.intensity = 3;
+          hemiLight.color = kelvinToColor(lightControls.temperature);
+        }
       }
     };
 
-    const presetFolder = gui.addFolder('Lighting Presets');
-    presetFolder.add(presets, 'theme', Object.keys(lightingPresets)).name('Theme').onChange(theme => {
+    const presets = { theme: 'Ambient' };
+    const presetFolder = gui.addFolder('Lighting Types');
+    presetFolder.add(presets, 'theme', Object.keys(lightingPresets)).name('Light Setup').onChange(theme => {
       lightingPresets[theme]();
     });
     presetFolder.open();
 
-    lightingPresets[presets.theme](); // Apply default
+    gui.add(lightControls, 'temperature', 1000, 20000, 100).name('Color Temperature (K)').onChange(() => {
+      lightingPresets[presets.theme]();
+    });
+    gui.add(lightControls, 'useLocalLights').name('Enable Local Lights').onChange(() => {
+      lightingPresets[presets.theme]();
+    });
+    gui.add(lightControls, 'useEnvMap').name('Enable Global Light').onChange(() => {
+      updateEnvMap(lightControls.environment);
+    });
+    gui.add(lightControls, 'environment', envMaps).name('Environment Map').onChange(value => {
+      updateEnvMap(value);
+    });
 
-    // Ground
+    updateEnvMap(lightControls.environment);
+    lightingPresets[presets.theme]();
+
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(2.5, 64),
       new THREE.MeshPhysicalMaterial({
@@ -169,7 +205,6 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Load Model
     let currentModel = null;
     const modelFiles = {
       'Model 1': 'svo2.obj',
@@ -183,6 +218,7 @@
       'Model 9': 'svo11.obj',
       'Model 10': 'svo12.obj'
     };
+
     const modelSettings = {
       selectedModel: 'Model 1'
     };
@@ -230,24 +266,9 @@
     });
     modelFolder.open();
 
-    loadModel(modelFiles[modelSettings.selectedModel]); // Initial model
+    loadModel(modelFiles[modelSettings.selectedModel]);
 
-    // Animation loop
-    let angle = 0;
     function render() {
-      if (lightAnimSettings.enableAnimation) {
-        angle += lightAnimSettings.speed;
-        const radius = 10;
-        dirLight.position.set(
-          radius * Math.cos(angle),
-          10,
-          radius * Math.sin(angle)
-        );
-        dirLight.target.position.set(0, 1.5, 0);
-        dirLight.target.updateMatrixWorld();
-        lightHelper.update();
-      }
-
       composer.render();
     }
 
